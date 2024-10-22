@@ -22,50 +22,52 @@ const client = new Client({
 
 const verificationCodes = {};
 const assignedEmails = new Set();
+const userCreatedChannels = new Map(); // Armazena canais criados pelos usuários
 
 client.once('ready', () => {
   console.log(`Bot online como ${client.user.tag}`);
 });
 
 // Configurações do nodemailer
-//const transporter = nodemailer.createTransport({
-  // service: 'gmail',
-  //auth: {
-    //user: '', 
-    //pass: '', // Use um gerador de senhas ou um App Password
-  //},
+/// const transporter = nodemailer.createTransport({
+///  service: 'gmail',
+///  auth: {
+///    user: '', 
+///     pass: '', // Use um gerador de senhas ou um App Password
+    // ou utilize outro serviço
+///},
 //});
 
 //async function sendVerificationEmail(email, code) {
-//  const mailOptions = {
-  //  from: 'test',
-    // to: email,
-    //subject: 'Código de Verificação',
-    //text: `Seu código de verificação é: ${code}`,
-  //};
+// const mailOptions = {
+//    from: '',
+///    to: email,
+///    subject: 'Código de Verificação',
+///    text: `Seu código de verificação é: ${code}`,
+ // };
 
-  //return transporter.sendMail(mailOptions);
+ // return transporter.sendMail(mailOptions);
 //}
 
-async function checkUserEmail(email) {
-  const authClient = await auth.getClient();
+//async function checkUserEmail(email) {
+  //const authClient = await auth.getClient();
 
-  const response = await sheets.spreadsheets.values.get({
-    auth: authClient,
-    spreadsheetId: '',
-    range: 'Sheet1!A1:B100',
-  });
+  //const response = await sheets.spreadsheets.values.get({
+   // auth: authClient,
+   // spreadsheetId: '',
+    // range: 'Sheet1!A1:B100',
+ // });
 
-  const rows = response.data.values;
-  if (rows.length) {
-    for (const row of rows) {
-      if (row[0] === email) {
-        return row[1]; 
-      }
-    }
-  }
-  return null; 
-}
+  //const rows = response.data.values;
+   //if (rows.length) {
+    //for (const row of rows) {
+     // if (row[0] === email) {
+      //  return row[1]; 
+      //}
+   // }
+  //}
+ // return null; 
+//}
 
 client.on('messageCreate', async (message) => {
   if (message.content.startsWith('!verifyE')) {
@@ -73,14 +75,21 @@ client.on('messageCreate', async (message) => {
       return message.reply('Este comando só pode ser usado em um servidor.');
     }
 
-    // Verifica se o canal já existe
-    const existingChannel = message.guild.channels.cache.find(channel => channel.name === 'verify-email' && channel.type === 'GUILD_TEXT');
-    if (existingChannel) {
-      return message.reply('Um canal com este nome já existe. Você pode excluir o canal antes de criar um novo.');
+    // Verifica se o usuário já criou um canal
+    if (userCreatedChannels.has(message.author.id)) {
+      return message.reply('Você já criou um canal de verificação. Por favor, use o existente ou aguarde ele ser excluído (5min).');
     }
 
     try {
-      const channelName = 'verify-email';
+      let channelName = 'verify-email';
+      let counter = 1;
+
+      // Verifica se um canal com o nome já existe e incrementa o número até encontrar um nome disponível
+      while (message.guild.channels.cache.some(channel => channel.name === channelName)) {
+        channelName = `verify-email-${counter}`;
+        counter++;
+      }
+
       console.log(`Tentando criar canal com o nome: ${channelName}`);
 
       // Configura as permissões do canal usando PermissionsBitField
@@ -106,6 +115,9 @@ client.on('messageCreate', async (message) => {
 
       console.log(`Canal criado: ${channel.name}`);
 
+      // Armazena o canal criado pelo usuário
+      userCreatedChannels.set(message.author.id, channel.id);
+
       const button = new ButtonBuilder()
         .setCustomId('send_email_button')
         .setLabel('Enviar Email')
@@ -114,6 +126,20 @@ client.on('messageCreate', async (message) => {
       const messageActionRow = new ActionRowBuilder().addComponents(button); 
 
       await channel.send({ content: 'Clique no botão abaixo para enviar seu e-mail:', components: [messageActionRow] });
+
+      // Configura um timeout para deletar o canal após 5 minutos (300.000 ms)
+      setTimeout(async () => {
+        try {
+          await channel.delete();
+          console.log(`Canal "${channel.name}" excluído após 5 minutos.`);
+          
+          // Remove o canal do mapeamento
+          userCreatedChannels.delete(message.author.id);
+        } catch (err) {
+          console.error('Erro ao excluir o canal:', err);
+        }
+      }, 300000); // 5 minutos
+
     } catch (error) {
       console.error('Erro ao criar canal:', error);
       message.reply('Houve um erro ao tentar criar o canal.');
@@ -205,4 +231,4 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 // Inicia o bot
-client.login(process.env.TOKEN); // Use a variável de ambiente para o token do bot
+//client.login(process.env.TOKEN); // Use a variável de ambiente para o token do bot
